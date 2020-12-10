@@ -1,0 +1,12 @@
+# Ignore files without extentions
+# This is so as not to accidentally push binaries
+*
+!/**/
+!*.*
+
+# No object files
+**/*.o
+# No a.out files
+**/a.out
+# Sometimes GDB crashes and dumps a core. Lets not push these
+**/core

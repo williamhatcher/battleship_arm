@@ -1,167 +1,173 @@
-@ Draw the entire board
 @ William Hatcher
-    .cpu    cortex-a53
-    .fpu    neon-fp-armv8
-    .syntax unified
+@ Functions to draw the game board
 
     .equ    row_offset, 4
     .equ    column_offset, 5
+    .align  2
 
-@ Board display strings
-    .text
-title:      .ascii "\x1b]0;Battleship GE\x07"
-            .ascii "\033[2J\033[1;1H"
-            .ascii "       Battleship GE\n"
-            .ascii "      William Hatcher"
-            .ascii "\000"
-boardTop:   .ascii "\033[38;2;164;164;164m\033[48;2;0;0;64m"
-            .asciz "  ╔═════════════════════╗"
+    .section .rodata    @ Read only data
+    .align  2
+title:
+    .ascii  "\x1b]0;Battleship ARM\x07"
+    .ascii  "\033[2J\033[1;1H"
+    .ascii  "      Battleship ARM\n"
+    .ascii  "      William Hatcher\n"
+header:
+    .ascii  "\033[38;2;164;164;164m\033[48;2;0;0;64m"
+    .asciz  "  ╔═════════════════════╗\n"
+row:
+    .ascii  "\033[38;2;164;164;164m"
+    .asciz  "\033[48;2;0;0;64m"
+    @ Will manually include the character here
+row2:
+    .ascii	" \342\225\221 · · · · · · · · · · \342\225\221"
+    .asciz	"\033[0m\n"
+footer:
+    .ascii  "\033[38;2;164;164;164m\033[48;2;0;0;64m"
+    .ascii  "  ╚═════════════════════╝"
+    .ascii  "\n    0 1 2 3 4 5 6 7 8 9  "
+    .ascii  "\033[0m\n"
+instructions: 
+    .asciz  "\033[1mPress space or enter to fire!\nUse arrow keys to move, q to quit\033[0m\n"
+blinking_cursor:
+    .asciz "\033[1 q"
+move_pre:
+    .ascii "\0337"
+    .asciz "\033["
+move_pre2:
+    .asciz ";"
+move_pre3:
+    .ascii "H\033[48;2;0;0;64m"
+    .asciz "\033[31m"
+hit:
+    .asciz "💥"
+miss:
+    .ascii "\033[31m"
+    .asciz "✗"
+move_post:
+    .ascii "\033[0m" 
+    .asciz "\0338"
 
-row:        .ascii "\033[38;2;164;164;164m"
-            .ascii "\033[48;2;0;0;64m"
-            .ascii	"%c \342\225\221 · · · · · · · · · · \342\225\221"
-	          .asciz	"\033[0m\n"
-
-boardBot:   .ascii "\033[38;2;164;164;164m\033[48;2;0;0;64m"
-            .ascii "  ╚═════════════════════╝"
-            .ascii "\n    0 1 2 3 4 5 6 7 8 9  "
-            .asciz "\033[0m"
-hit:        .ascii "\0337"
-            .ascii "\033[%d;%dH" 
-            .ascii "\033[48;2;0;0;64m"
-            @ .ascii "\033[38;2;242;125;12m"
-            .ascii "\033[31m"
-            .ascii "\033[1D"
-            .ascii "💥"
-            .ascii "\033[0m" 
-            .asciz "\0338"
-miss:       .ascii "\0337"
-            .ascii "\033[%d;%dH" 
-            .ascii "\033[48;2;0;0;64m"
-            .ascii "\033[31m" 
-            .ascii "✗"
-            .ascii "\033[0m" 
-            .asciz "\0338"
-s_move_to:  .asciz "\033[%d;%dH"
-set_blinking:.asciz "\033[1 q"
-md_1:.asciz "in: l: %d, c: %d\n"
-md_2:.asciz "new values: line: %d, col: %d\n"
-@ hide_cur:   .asciz "\033[?25l"
-@ show_cur:   .asciz "\033[?25h"
-
-    @ Program
     .text
     .align  2
+    .syntax unified
     .global draw_board
     .type   draw_board, %function
-    .global mark_board
-    .type   mark_board, %function
-    .global move_to
-    .type   move_to, %function
-    .global to_board_pos
-    .type   to_board_pos, %function
 
 draw_board:
-    push    {r4, fp, lr}
+    push    {lr}
 
-    @ set blinking cursor
-    ldr   r0, a_set_blinking
-    bl    printf
+    @ Turn on blinking cursor
+    ldr     r0, =blinking_cursor
+    bl      write
 
-    @ print title
-    ldr   r0, a_title
-    bl    puts
+    @ Draw title + header
+    ldr     r0, =title
+    bl      write
 
-    @ print top
-    ldr   r0, a_boardTop
-    bl    puts
+    @ Init char variable
+    mov     r0, 'A'
+    str     r0, [sp, -8]!
+    mov     r0, 0   @ Store null terminator
+    str     r0, [sp, -4]
 
-    @ print rows
-    mov   r4, 'A'
-loop:
-    mov   r1, r4
-    ldr   r0, a_row
-    bl    printf
-    add   r4, r4, 1
-    cmp   r4, 'J'
-    ble   loop
+    @ Draw Row
+draw_row:
+    @ Draw Start of Row
+    ldr     r0, =row
+    bl      write
 
-    @ print bottom
-    ldr     r0, a_boardBot
-    bl      puts
+    @ Draw character
+    mov     r0, sp  @ Address of character is at sp
+    bl      write
 
-    pop     {r4, fp, pc}
+    @ Draw rest of row
+    ldr     r0, =row2
+    bl      write
 
-a_title:    .word title
-a_boardTop: .word boardTop
-a_row:      .word row
-a_boardBot: .word boardBot
+    @ Test if Character is J
+    ldr     r0, [sp]
+    cmp     r0, 'J'
+    @ If not; Increment Character
+    addlt   r0, r0, 1
+    strlt   r0, [sp]
+    blt     draw_row
+
+    @ End of loop
+    @ Deallocate stack
+    add     sp, sp, 8
+
+    @ Draw Footer
+    ldr     r0, =footer
+    bl      write
+
+    @ Bye!
+    pop     {pc}
+
 
 to_board_pos:
-  @ 2 args
-  @ r0 raw row/line
-  @ r1 raw column
-  @ Returns proper offsets
-  @ r0 <- proper row/line
-  @ r1 <- proper column
-  push  {fp, lr}
-  sub   r0, r0, row_offset
-  mov   r3, column_offset
-  lsr   r1, r1, 1
-  sub   r1, r1, 2
-  pop   {fp, pc}
+    @ 2 args
+    @ r0 raw row/line
+    @ r1 raw column
+    @ Returns proper offsets
+    @ r0 <- proper row/line
+    @ r1 <- proper column
+    sub     r0, r0, row_offset
+    mov     r3, column_offset
+    lsr     r1, r1, 1
+    sub     r1, r1, 2
+    bx      lr
 
-move_to:
-  @ moves CURSOR to location (based on board)
-  @ 2 args
-  @ r0 row/line -> r1
-  @ r1 column   -> r2
-  push  {fp, lr}
-  
-  @ move registers up one to make room for printf string
-  mov   r2, r1
-  mov   r1, r0
-
-  @ calculate true positions
-  add   r1, r1, row_offset
-  mov   r3, column_offset
-  add   r2, r3, r2, lsl 1 @ column (*2, +5)
-
-  ldr   r0, a_move_to
-  bl    printf
-
-  pop   {fp, pc}
 
 mark_board:
-  @ 3 args
-  @ r0 row
-  @ r1 column
-  @ r2 character
-  @ 0 = miss, 1 = hit
+    @ 3 args
+    @ r0 row
+    @ r1 column
+    @ r2 character
+    @ 0 = miss, 1 = hit
+    push    {fp, lr}
 
-  push  {r4, fp, lr}
+    @ calculae term values
+    add     r0, r0, row_offset
+    mov     r3, column_offset
+    add     r1, r3, r1, lsl 1 @ column (*2, +5)
+    push    {r0, r1}
+    @ r0 at sp, r1 at sp +4
+    add     fp, sp, 4
+    @ row r0 at [fp, -4]
+    @ col r1 at [fp]
+    
+    @ Write start of control sequence
+    ldr     r0, =move_pre
+    bl      write
 
-  @ calculae term values
-  add   r0, r0, row_offset
-  mov   r3, column_offset
-  add   r1, r3, r1, lsl 1 @ column (*2, +5)
+    @ Write line in ascii
+    @ Load row from stack
+    ldr     r1, [sp]
+    add     r1, r1, '0'
+    mov     r0, 0
+    str     r0, [sp, 4]
+    mov     r0, sp
+    bl      write
 
-  @ move everything up a register to call printf
-  mov   r3, r2
-  mov   r2, r1
-  mov   r1, r0
+    ldr     r0, =move_pre2
+    bl      write
 
-  @ check which character to print
-  cmp   r3, 0  @ miss
-  ldreq r0, a_miss
-  ldrne r0, a_hit
-  bl    printf
-  pop   {r4, fp, pc}
+    ldr     r1, [sp]
+    add     r1, r1, '0'
+    mov     r0, 0
+    str     r0, [sp, 4]
+    mov     r0, sp
+    bl      write
 
-a_miss:   .word miss
-a_hit:    .word hit
-a_move_to:  .word s_move_to
-a_set_blinking: .word set_blinking
+    ldr     r0, =move_pre3
+    bl      write
 
-a_md_1:.word md_1
-a_md_2:.word md_2
+    ldr     r0, =hit
+    bl      write
+
+    ldr     r0, =move_post
+    bl      write
+
+    add     sp, sp, 8
+    pop     {fp, pc}
